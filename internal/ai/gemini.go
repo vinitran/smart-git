@@ -53,10 +53,11 @@ type CommitAnalysisRequest struct {
 	RepoInfo git.RepoInfo
 }
 
-// CommitAnalysisResponse wraps the AI-generated commit message
-// and a simple privacy/sensitivity assessment.
+// CommitAnalysisResponse wraps the AI-generated commit message,
+// suggested branch name, and a simple privacy/sensitivity assessment.
 type CommitAnalysisResponse struct {
 	CommitMessage  string   `json:"commit_message"`
+	BranchName     string   `json:"branch_name"`
 	PrivacyRisk    string   `json:"privacy_risk"`              // "low", "medium", "high"
 	PrivacyReasons []string `json:"privacy_reasons,omitempty"` // human-readable reasons
 }
@@ -172,10 +173,17 @@ func (c *Client) AnalyzeCommit(ctx context.Context, req CommitAnalysisRequest) (
 	builder.WriteString("- Optional body: one or more lines after a blank line, using imperative tense and explaining the motivation and previous behavior.\n")
 	builder.WriteString("- Do NOT include markdown formatting, bullet characters, code fences, or backticks in the commit message.\n")
 	builder.WriteString("- Do NOT include any commentary or explanation around the commit message.\n")
+	builder.WriteString("Branch naming requirements (very important):\n")
+	builder.WriteString("- Suggest a branch name suitable for feature or fix branches, following this pattern as closely as possible:\n")
+	builder.WriteString("  <category>/<short-kebab-description>\n")
+	builder.WriteString("- Valid category prefixes include: feature, fix, hotfix, refactor, docs, chore, test, perf, ops, build.\n")
+	builder.WriteString("- Derive the description from the commit message description; use lowercase letters, numbers, and dashes only.\n")
+	builder.WriteString("- Keep branch names reasonably short (for example, under 40 characters after the category/ prefix).\n")
+	builder.WriteString("- Example branch names: feature/add-smartgit-commit-flow, fix/login-timeout, docs/update-readme.\n")
 	builder.WriteString("JSON response requirements (very important):\n")
 	builder.WriteString("- Respond ONLY as a single valid JSON object, with no extra text, no explanation, no markdown, and no code fences.\n")
 	builder.WriteString("- The JSON must have exactly this shape and key names:\n")
-	builder.WriteString(`{"commit_message": "<commit message>", "privacy_risk": "<low|medium|high>", "privacy_reasons": ["reason 1", "reason 2"]}` + "\n")
+	builder.WriteString(`{"commit_message": "<commit message>", "branch_name": "<branch name>", "privacy_risk": "<low|medium|high>", "privacy_reasons": ["reason 1", "reason 2"]}` + "\n")
 	builder.WriteString("- Do NOT wrap the JSON in ``` or ```json. Do NOT add any commentary before or after the JSON.\n")
 	builder.WriteString("Requirements for commit_message:\n")
 	builder.WriteString("- First line: short summary (max ~72 characters).\n")
@@ -259,6 +267,7 @@ func (c *Client) AnalyzeCommit(ctx context.Context, req CommitAnalysisRequest) (
 	}
 
 	parsed.CommitMessage = strings.TrimSpace(parsed.CommitMessage)
+	parsed.BranchName = strings.TrimSpace(parsed.BranchName)
 	parsed.PrivacyRisk = strings.ToLower(strings.TrimSpace(parsed.PrivacyRisk))
 	resp = parsed
 	return resp, nil
