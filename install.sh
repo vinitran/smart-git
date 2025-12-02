@@ -52,8 +52,23 @@ chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
 
 echo ""
 echo "✅ Installed ${BINARY_NAME} to ${INSTALL_DIR}/${BINARY_NAME}"
-echo "Make sure ${INSTALL_DIR} is in your PATH, e.g. add this to ~/.zshrc:"
-echo "  export PATH=\"${INSTALL_DIR}:\$PATH\""
+
+# Try to persist PATH update for zsh users.
+ZSHRC="${HOME}/.zshrc"
+EXPORT_LINE="export PATH=\"${INSTALL_DIR}:\$PATH\""
+
+if [ -f "${ZSHRC}" ]; then
+  if ! grep -Fq "${EXPORT_LINE}" "${ZSHRC}"; then
+    echo "${EXPORT_LINE}" >> "${ZSHRC}"
+    echo "🔧 Added PATH update to ${ZSHRC}:"
+    echo "  ${EXPORT_LINE}"
+  fi
+else
+  echo "${EXPORT_LINE}" >> "${ZSHRC}"
+  echo "🔧 Created ${ZSHRC} and added PATH update:"
+  echo "  ${EXPORT_LINE}"
+fi
+
 echo ""
 echo "You can now run:"
 echo "  ${BINARY_NAME} version"
