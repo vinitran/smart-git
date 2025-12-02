@@ -156,7 +156,11 @@ func (c *Client) AnalyzeCommit(ctx context.Context, req CommitAnalysisRequest) (
 
 	var builder strings.Builder
 	builder.WriteString("You are an experienced software engineer and security-conscious reviewer.\n")
+<<<<<<< HEAD
 	builder.WriteString("Task 1: Analyze the git diff and produce a short, simple git commit message following the Conventional Commits style described below.\n")
+=======
+	builder.WriteString("Task 1: Analyze the git diff and produce a high-quality git commit message following the Conventional Commits style described below.\n")
+>>>>>>> 0a5c0ca (refactor(ai): improve commit message generation prompt)
 	builder.WriteString("Task 2: Check if the diff might leak private or sensitive information (secrets, keys, tokens, passwords, personal data, internal URLs, etc.).\n")
 	builder.WriteString("Commit message requirements (very important):\n")
 	builder.WriteString("- Use Conventional Commits format: <type>(<optional scope>): <description>\n")
@@ -167,11 +171,18 @@ func (c *Client) AnalyzeCommit(ctx context.Context, req CommitAnalysisRequest) (
 	builder.WriteString("  * Use imperative, present tense: add, fix, update, remove, refactor, etc.\n")
 	builder.WriteString("  * Do not capitalize the first letter of the description.\n")
 	builder.WriteString("  * Do not end the description with a period.\n")
+<<<<<<< HEAD
 	builder.WriteString("  * Keep the description very short and easy to understand (target <= 50 characters).\n")
 	builder.WriteString("  * Prefer simple, everyday English and avoid complex or fancy wording.\n")
 	builder.WriteString("- For breaking changes, use an exclamation mark before the colon in the header, e.g.: feat(api)!: remove status endpoint\n")
 	builder.WriteString("- For breaking changes, also add a footer line starting with BREAKING CHANGE: followed by a short explanation. You may add an empty line before the footer.\n")
 	builder.WriteString("- In most cases, only use a single-line header without a body. Add a body only when it is really necessary to explain something important.\n")
+=======
+	builder.WriteString("  * Keep the description reasonably short (around 50–100 characters).\n")
+	builder.WriteString("- For breaking changes, use an exclamation mark before the colon in the header, e.g.: feat(api)!: remove status endpoint\n")
+	builder.WriteString("- For breaking changes, also add a footer line starting with BREAKING CHANGE: followed by a short explanation. You may add an empty line before the footer.\n")
+	builder.WriteString("- Optional body: one or more lines after a blank line, using imperative tense and explaining the motivation and previous behavior.\n")
+>>>>>>> 0a5c0ca (refactor(ai): improve commit message generation prompt)
 	builder.WriteString("- Do NOT include markdown formatting, bullet characters, code fences, or backticks in the commit message.\n")
 	builder.WriteString("- Do NOT include any commentary or explanation around the commit message.\n")
 	builder.WriteString("Branch naming requirements (very important):\n")
