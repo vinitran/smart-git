@@ -19,9 +19,10 @@ type pushOptions struct {
 
 var (
 	pushCmd = &cobra.Command{
-		Use:   "push",
-		Short: "Push the current branch to origin, setting upstream if needed",
-		RunE:  runPush,
+		Use:     "push",
+		Aliases: []string{"p"},
+		Short:   "Push the current branch to origin, setting upstream if needed",
+		RunE:    runPush,
 	}
 	pushOpts pushOptions
 )
