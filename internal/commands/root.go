@@ -16,7 +16,12 @@ var (
 		Aliases: []string{"smartgit"},
 		Short:   "SmartGit is a git companion CLI powered by AI reviews",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return setupLogger(cmd.Context())
+			if err := setupLogger(cmd.Context()); err != nil {
+				return err
+			}
+			// Best-effort version check; never fail the actual command.
+			checkForUpdateOnStartup(cmd.Context())
+			return nil
 		},
 	}
 	verbose bool
@@ -37,13 +42,13 @@ func init() {
 }
 
 func setupLogger(ctx context.Context) error {
-	// Mặc định chỉ log error để tránh ồn.
+	// Default to error level to keep output quiet.
 	level := slog.LevelError
-	// --verbose: cho phép log info (ít hơn debug).
+	// --verbose: show info logs.
 	if verbose {
 		level = slog.LevelInfo
 	}
-	// --debug: log chi tiết nhất.
+	// --debug: show debug logs.
 	if debug {
 		level = slog.LevelDebug
 	}
