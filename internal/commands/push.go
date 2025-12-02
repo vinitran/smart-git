@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -14,7 +15,8 @@ import (
 )
 
 type pushOptions struct {
-	timeout time.Duration
+	timeout  time.Duration
+	createPR bool
 }
 
 var (
@@ -30,6 +32,7 @@ func init() {
 	rootCmd.AddCommand(pushCmd)
 
 	pushCmd.Flags().DurationVar(&pushOpts.timeout, "timeout", 45*time.Second, "Timeout for the git push operation")
+	pushCmd.Flags().BoolVarP(&pushOpts.createPR, "pr", "p", false, "Also create a pull request after pushing")
 }
 
 func runPush(cmd *cobra.Command, args []string) error {
@@ -97,13 +100,34 @@ func runPush(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		fmt.Printf("Pushed branch '%s' to origin.\n", branch)
-		return nil
+	} else {
+		log.InfoContext(ctx, "No upstream set for current branch, pushing with -u", "branch", branch)
+		if err := git.PushCurrentBranch(ctx, wd, true); err != nil {
+			return err
+		}
+		fmt.Printf("Pushed branch '%s' to origin and set upstream tracking.\n", branch)
 	}
 
-	log.InfoContext(ctx, "No upstream set for current branch, pushing with -u", "branch", branch)
-	if err := git.PushCurrentBranch(ctx, wd, true); err != nil {
-		return err
+	if pushOpts.createPR {
+		log.InfoContext(ctx, "Creating pull request using gh CLI", "branch", branch)
+		if err := createPullRequest(ctx, wd); err != nil {
+			return err
+		}
 	}
-	fmt.Printf("Pushed branch '%s' to origin and set upstream tracking.\n", branch)
+
+	return nil
+}
+
+// createPullRequest creates a pull request for the current branch using the GitHub CLI.
+// It relies on `gh` being installed and authenticated in the user's environment.
+func createPullRequest(ctx context.Context, dir string) error {
+	cmd := exec.CommandContext(ctx, "gh", "pr", "create", "--fill")
+	cmd.Dir = dir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to create pull request using gh: %w", err)
+	}
 	return nil
 }
