@@ -53,10 +53,11 @@ type CommitAnalysisRequest struct {
 	RepoInfo git.RepoInfo
 }
 
-// CommitAnalysisResponse wraps the AI-generated commit message
-// and a simple privacy/sensitivity assessment.
+// CommitAnalysisResponse wraps the AI-generated commit message,
+// suggested branch name, and a simple privacy/sensitivity assessment.
 type CommitAnalysisResponse struct {
 	CommitMessage  string   `json:"commit_message"`
+	BranchName     string   `json:"branch_name"`
 	PrivacyRisk    string   `json:"privacy_risk"`              // "low", "medium", "high"
 	PrivacyReasons []string `json:"privacy_reasons,omitempty"` // human-readable reasons
 }
@@ -155,12 +156,35 @@ func (c *Client) AnalyzeCommit(ctx context.Context, req CommitAnalysisRequest) (
 
 	var builder strings.Builder
 	builder.WriteString("You are an experienced software engineer and security-conscious reviewer.\n")
-	builder.WriteString("Task 1: Analyze the git diff and produce a concise, conventional commit style message.\n")
+	builder.WriteString("Task 1: Analyze the git diff and produce a high-quality git commit message following the Conventional Commits style described below.\n")
 	builder.WriteString("Task 2: Check if the diff might leak private or sensitive information (secrets, keys, tokens, passwords, personal data, internal URLs, etc.).\n")
-	builder.WriteString("Very important: respond ONLY as a single valid JSON object, with no extra text, no explanation, no markdown, and no code fences.\n")
-	builder.WriteString("The JSON must have exactly this shape and key names:\n")
-	builder.WriteString(`{"commit_message": "<commit message>", "privacy_risk": "<low|medium|high>", "privacy_reasons": ["reason 1", "reason 2"]}` + "\n")
-	builder.WriteString("Do NOT wrap the JSON in ``` or ```json. Do NOT add any commentary before or after the JSON.\n")
+	builder.WriteString("Commit message requirements (very important):\n")
+	builder.WriteString("- Use Conventional Commits format: <type>(<optional scope>): <description>\n")
+	builder.WriteString("- Valid types: feat, fix, refactor, perf, style, test, docs, build, ops, chore, revert.\n")
+	builder.WriteString("- Choose type based on change kind: feat for new feature, fix for bug fix, docs for documentation only, refactor for internal restructuring without behavior change, perf for performance optimizations, build for build/CI/deps, ops for infra/operations, chore for general maintenance.\n")
+	builder.WriteString("- Scope is optional; when used, keep it short and related to component/module (e.g., auth, download, api).\n")
+	builder.WriteString("- Description rules:\n")
+	builder.WriteString("  * Use imperative, present tense: add, fix, update, remove, refactor, etc.\n")
+	builder.WriteString("  * Do not capitalize the first letter of the description.\n")
+	builder.WriteString("  * Do not end the description with a period.\n")
+	builder.WriteString("  * Keep the description reasonably short (around 50–100 characters).\n")
+	builder.WriteString("- For breaking changes, use an exclamation mark before the colon in the header, e.g.: feat(api)!: remove status endpoint\n")
+	builder.WriteString("- For breaking changes, also add a footer line starting with BREAKING CHANGE: followed by a short explanation. You may add an empty line before the footer.\n")
+	builder.WriteString("- Optional body: one or more lines after a blank line, using imperative tense and explaining the motivation and previous behavior.\n")
+	builder.WriteString("- Do NOT include markdown formatting, bullet characters, code fences, or backticks in the commit message.\n")
+	builder.WriteString("- Do NOT include any commentary or explanation around the commit message.\n")
+	builder.WriteString("Branch naming requirements (very important):\n")
+	builder.WriteString("- Suggest a branch name suitable for feature or fix branches, following this pattern as closely as possible:\n")
+	builder.WriteString("  <category>/<short-kebab-description>\n")
+	builder.WriteString("- Valid category prefixes include: feature, fix, hotfix, refactor, docs, chore, test, perf, ops, build.\n")
+	builder.WriteString("- Derive the description from the commit message description; use lowercase letters, numbers, and dashes only.\n")
+	builder.WriteString("- Keep branch names reasonably short (for example, under 40 characters after the category/ prefix).\n")
+	builder.WriteString("- Example branch names: feature/add-smartgit-commit-flow, fix/login-timeout, docs/update-readme.\n")
+	builder.WriteString("JSON response requirements (very important):\n")
+	builder.WriteString("- Respond ONLY as a single valid JSON object, with no extra text, no explanation, no markdown, and no code fences.\n")
+	builder.WriteString("- The JSON must have exactly this shape and key names:\n")
+	builder.WriteString(`{"commit_message": "<commit message>", "branch_name": "<branch name>", "privacy_risk": "<low|medium|high>", "privacy_reasons": ["reason 1", "reason 2"]}` + "\n")
+	builder.WriteString("- Do NOT wrap the JSON in ``` or ```json. Do NOT add any commentary before or after the JSON.\n")
 	builder.WriteString("Requirements for commit_message:\n")
 	builder.WriteString("- First line: short summary (max ~72 characters).\n")
 	builder.WriteString("- Optional body: one or more lines after a blank line, explaining rationale and key changes.\n")
@@ -243,6 +267,7 @@ func (c *Client) AnalyzeCommit(ctx context.Context, req CommitAnalysisRequest) (
 	}
 
 	parsed.CommitMessage = strings.TrimSpace(parsed.CommitMessage)
+	parsed.BranchName = strings.TrimSpace(parsed.BranchName)
 	parsed.PrivacyRisk = strings.ToLower(strings.TrimSpace(parsed.PrivacyRisk))
 	resp = parsed
 	return resp, nil

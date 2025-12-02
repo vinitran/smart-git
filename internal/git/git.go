@@ -121,3 +121,63 @@ func Commit(ctx context.Context, dir, message string) error {
 	_, err := Run(ctx, dir, "commit", "-m", message)
 	return err
 }
+
+// CurrentBranch returns the current branch name.
+func CurrentBranch(ctx context.Context, dir string) (string, error) {
+	if err := EnsureRepository(ctx, dir); err != nil {
+		return "", err
+	}
+	out, err := Run(ctx, dir, "rev-parse", "--abbrev-ref", "HEAD")
+	return strings.TrimSpace(out), err
+}
+
+// CreateAndCheckoutBranch creates a new branch from the current HEAD and checks it out.
+func CreateAndCheckoutBranch(ctx context.Context, dir, name string) error {
+	if err := EnsureRepository(ctx, dir); err != nil {
+		return err
+	}
+	_, err := Run(ctx, dir, "checkout", "-b", name)
+	return err
+}
+
+// PushCurrentBranch pushes the current branch to origin, optionally setting upstream.
+func PushCurrentBranch(ctx context.Context, dir string, setUpstream bool) error {
+	branch, err := CurrentBranch(ctx, dir)
+	if err != nil {
+		return err
+	}
+	if branch == "" {
+		return errors.New("could not determine current branch name")
+	}
+
+	args := []string{"push"}
+	if setUpstream {
+		args = append(args, "-u")
+	}
+	args = append(args, "origin", branch)
+
+	_, err = Run(ctx, dir, args...)
+	return err
+}
+
+// HasUpstream reports whether the current branch has an upstream configured.
+func HasUpstream(ctx context.Context, dir string) (bool, error) {
+	if err := EnsureRepository(ctx, dir); err != nil {
+		return false, err
+	}
+	// This command fails if there is no upstream.
+	_, err := Run(ctx, dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+	if err != nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+// LastCommitSubject returns the subject line of the latest commit (git log -1 --pretty=%s).
+func LastCommitSubject(ctx context.Context, dir string) (string, error) {
+	if err := EnsureRepository(ctx, dir); err != nil {
+		return "", err
+	}
+	out, err := Run(ctx, dir, "log", "-1", "--pretty=%s")
+	return strings.TrimSpace(out), err
+}

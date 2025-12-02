@@ -113,6 +113,8 @@ func runCommit(cmd *cobra.Command, args []string) error {
 		return errors.New("AI returned an empty commit message")
 	}
 
+	branchName := strings.TrimSpace(analysis.BranchName)
+
 	fmt.Println("Proposed commit message:")
 	fmt.Println("------------------------")
 	fmt.Println(message)
@@ -143,6 +145,21 @@ func runCommit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	protectedBranch := isProtectedBranch(repoInfo.Branch)
+
+	// If we are on a protected branch (like main/develop), create and switch
+	// to a feature/fix branch before staging and committing.
+	if protectedBranch {
+		finalBranchName := branchName
+		if finalBranchName == "" {
+			finalBranchName = deriveBranchNameFromCommit(message)
+		}
+		fmt.Printf("Creating and switching to branch: %s\n", finalBranchName)
+		if err := git.CreateAndCheckoutBranch(ctx, wd, finalBranchName); err != nil {
+			return err
+		}
+	}
+
 	log.InfoContext(ctx, "Staging all changes after AI analysis")
 	if err := git.AddAll(ctx, wd); err != nil {
 		return err
@@ -155,4 +172,108 @@ func runCommit(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("Commit created successfully.")
 	return nil
+}
+
+// isProtectedBranch reports whether the given branch should be treated as protected.
+func isProtectedBranch(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "main", "master", "develop", "dev":
+		return true
+	default:
+		return false
+	}
+}
+
+// deriveBranchNameFromCommit generates a reasonable branch name from a Conventional
+// Commit style header. It falls back to a generic feature branch if parsing fails.
+func deriveBranchNameFromCommit(header string) string {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return "feature/changes"
+	}
+
+	// Extract type, optional scope and description from "<type>(<scope>)!: desc"
+	colonIdx := strings.Index(header, ":")
+	if colonIdx == -1 {
+		return "feature/" + slugify(header)
+	}
+
+	prefix := strings.TrimSpace(header[:colonIdx])
+	desc := strings.TrimSpace(header[colonIdx+1:])
+
+	// Remove optional breaking change indicator "!" before colon.
+	if strings.HasSuffix(prefix, "!") {
+		prefix = strings.TrimSuffix(prefix, "!")
+		prefix = strings.TrimSpace(prefix)
+	}
+
+	// Extract type from "<type>(scope)" or "<type>"
+	typePart := prefix
+	if parenIdx := strings.Index(prefix, "("); parenIdx != -1 {
+		typePart = prefix[:parenIdx]
+	}
+	typePart = strings.ToLower(strings.TrimSpace(typePart))
+
+	category := mapCommitTypeToBranchCategory(typePart)
+
+	descSlug := slugify(desc)
+	if len(descSlug) > 40 {
+		descSlug = descSlug[:40]
+	}
+	if descSlug == "" {
+		descSlug = "changes"
+	}
+
+	return fmt.Sprintf("%s/%s", category, descSlug)
+}
+
+func mapCommitTypeToBranchCategory(t string) string {
+	switch t {
+	case "feat":
+		return "feature"
+	case "fix":
+		return "fix"
+	case "refactor":
+		return "refactor"
+	case "perf":
+		return "perf"
+	case "style":
+		return "style"
+	case "test":
+		return "test"
+	case "docs":
+		return "docs"
+	case "build":
+		return "build"
+	case "ops":
+		return "ops"
+	case "chore":
+		return "chore"
+	case "revert":
+		return "revert"
+	default:
+		return "feature"
+	}
+}
+
+// slugify converts an arbitrary description into a lowercase, kebab-case slug
+// suitable for use in a branch name.
+func slugify(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		// Treat any non-alphanumeric character as a separator.
+		if !lastDash {
+			b.WriteRune('-')
+			lastDash = true
+		}
+	}
+	result := strings.Trim(b.String(), "-")
+	return result
 }
