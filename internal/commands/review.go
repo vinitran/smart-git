@@ -148,6 +148,8 @@ func resolveAPIKey(ctx context.Context) (string, error) {
 		return key, nil
 	}
 
+	fmt.Println("Gemini API key is not configured.")
+	fmt.Println("You can create a Gemini API key at: https://aistudio.google.com/api-keys")
 	fmt.Print("Enter your Gemini API key (it will be stored for future use): ")
 	reader := bufio.NewReader(os.Stdin)
 	key, err := reader.ReadString('\n')
