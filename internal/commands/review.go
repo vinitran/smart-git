@@ -27,9 +27,10 @@ type reviewOptions struct {
 
 var (
 	reviewCmd = &cobra.Command{
-		Use:   "review",
-		Short: "AI review for git diffs or commits",
-		RunE:  runReview,
+		Use:     "review",
+		Aliases: []string{"rv"},
+		Short:   "AI review for git diffs or commits",
+		RunE:    runReview,
 	}
 	opts reviewOptions
 )
