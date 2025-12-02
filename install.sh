@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_OWNER="vinhtran"
-REPO_NAME="git-smart"
+REPO_OWNER="vinitran"
+REPO_NAME="smart-git"
 BINARY_NAME="sg"
 
 # Detect OS
