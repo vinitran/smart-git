@@ -1,0 +1,775 @@
+---
+alwaysApply: true
+---
+
+# Git Standards - AI-Optimized
+
+## 🎯 Core Principles (Must Follow)
+
+1. **Atomic commits** - One logical change per commit
+2. **Clear messages** - Follow conventional format
+3. **Linear history** - Rebase over merge when possible
+4. **Never force push** - To shared branches
+5. **Review before merge** - No direct commits to main
+
+---
+
+## 📝 Commit Message Format
+
+### Structure (Conventional Commits)
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+### Quick Reference
+
+| Part | Required | Length | Example |
+|------|----------|--------|---------|
+| type | ✅ Yes | - | `feat`, `fix`, `docs` |
+| scope | ❌ Optional | - | `auth`, `download`, `api` |
+| subject | ✅ Yes | ≤50 chars | `add user authentication` |
+| body | ❌ Optional | ≤72 chars/line | Detailed explanation |
+| footer | ❌ Optional | - | `Closes #123`, `BREAKING CHANGE` |
+
+---
+
+## 🏷️ Commit Types
+
+### Primary Types (Use 90% of time)
+
+| Type | When to Use | Example |
+|------|-------------|---------|
+| `feat` | New feature | `feat(auth): add GitHub OAuth login` |
+| `fix` | Bug fix | `fix(download): handle timeout errors` |
+| `docs` | Documentation only | `docs(readme): update installation steps` |
+| `refactor` | Code restructuring | `refactor(parser): simplify token logic` |
+| `test` | Add/update tests | `test(auth): add token validation tests` |
+| `perf` | Performance improvement | `perf(query): add database indexing` |
+
+### Secondary Types (Use rarely)
+
+| Type | When to Use |
+|------|-------------|
+| `style` | Formatting, whitespace (no logic change) |
+| `chore` | Build, dependencies, tooling |
+| `ci` | CI/CD configuration |
+| `build` | Build system changes |
+| `revert` | Revert previous commit |
+
+### Decision Tree: Which Type?
+
+```
+Does it change functionality?
+├─ Adds new feature → feat
+├─ Fixes bug → fix
+├─ Improves performance → perf
+└─ No functionality change
+    ├─ Changes tests → test
+    ├─ Changes docs → docs
+    ├─ Refactors code → refactor
+    └─ Everything else → chore
+```
+
+---
+
+## ✍️ Writing Good Messages
+
+### Subject Line Rules
+
+```bash
+# ✅ Good - Imperative, clear, concise
+feat(auth): add GitHub OAuth login
+fix(download): handle connection timeout
+docs(api): update endpoint documentation
+
+# ❌ Bad - Past tense, vague, too long
+feat(auth): added oauth login functionality for github integration
+fixed bug
+Update README.md
+```
+
+**Rules:**
+- Start with lowercase (after type)
+- Use imperative mood ("add" not "added")
+- No period at end
+- Max 50 characters for subject
+- Be specific, not vague
+
+### Imperative Mood Cheat Sheet
+
+| ❌ Wrong | ✅ Correct |
+|---------|-----------|
+| added | add |
+| fixed | fix |
+| updated | update |
+| changed | change |
+| removed | remove |
+| implemented | implement |
+
+### Body Guidelines
+
+```bash
+# ✅ Good - Explains WHY and HOW
+feat(cache): implement LRU cache eviction
+
+Previous implementation used random eviction which caused
+frequent cache misses for hot data. New LRU strategy improves
+hit rate by 40% in production workloads.
+
+Implementation uses doubly-linked list for O(1) eviction.
+
+Closes #156
+
+# ✅ Good - Lists multiple changes
+refactor(api): restructure handler package
+
+Changes:
+- Move handlers to separate files by resource
+- Extract validation to middleware
+- Add error wrapping for better debugging
+
+This makes the codebase easier to navigate and test.
+
+# ❌ Bad - Just repeats subject
+feat(cache): implement LRU cache
+
+Implemented LRU cache eviction.
+```
+
+**Rules:**
+- Wrap at 72 characters per line
+- Separate body from subject with blank line
+- Explain WHAT and WHY, not HOW (code shows how)
+- Use bullet points for multiple items
+- Reference issues: `Closes #123`, `Fixes #456`, `Refs #789`
+
+### Footer Rules
+
+```bash
+# Breaking changes (MUST be in footer)
+feat(api): change authentication endpoint
+
+BREAKING CHANGE: /auth endpoint now requires client_id parameter.
+Clients must update to include client_id in all auth requests.
+
+# Issue references
+Closes #123
+Fixes #456, #789
+Refs #234
+
+# Co-authors
+Co-authored-by: John Doe <john@example.com>
+Co-authored-by: Jane Smith <jane@example.com>
+```
+
+---
+
+## 📦 Commit Scope Examples
+
+### By Component
+
+```bash
+feat(auth): add token refresh
+feat(download): add retry logic
+feat(github): implement rate limiting
+fix(parser): handle empty input
+docs(contributing): add code review guidelines
+test(integration): add end-to-end tests
+```
+
+### By File/Module
+
+```bash
+feat(user-model): add email validation
+fix(order-service): prevent duplicate orders
+refactor(utils): extract string helpers
+```
+
+### Multiple Scopes
+
+```bash
+# ✅ If affects 2-3 related components
+feat(auth,api): add OAuth2 support
+
+# ❌ If affects many components - omit scope
+refactor: restructure project layout
+```
+
+---
+
+## 🌳 Branch Naming
+
+### Format
+
+```
+<type>/<issue-number>-<short-description>
+```
+
+### Examples
+
+```bash
+# ✅ Good
+feature/123-github-oauth-login
+fix/456-timeout-handling
+docs/789-api-documentation
+refactor/321-error-handling
+
+# ❌ Bad
+new-feature
+fix_bug
+johns-branch
+tmp
+test
+```
+
+### Branch Types
+
+| Prefix | Purpose | Example |
+|--------|---------|---------|
+| `feature/` | New feature | `feature/123-user-profile` |
+| `fix/` | Bug fix | `fix/456-memory-leak` |
+| `hotfix/` | Critical production fix | `hotfix/789-security-patch` |
+| `refactor/` | Code refactoring | `refactor/321-api-structure` |
+| `docs/` | Documentation | `docs/234-api-guide` |
+| `test/` | Test improvements | `test/567-integration-tests` |
+| `chore/` | Maintenance | `chore/890-upgrade-deps` |
+
+### Protected Branches
+
+```bash
+main        # Production code, protected
+develop     # Integration branch, protected
+release/*   # Release branches, protected
+hotfix/*    # Hotfix branches, protected
+```
+
+---
+
+## 🔄 Workflow Patterns
+
+### Pattern 1: Feature Branch Workflow
+
+```bash
+# 1. Create branch from main
+git checkout main
+git pull origin main
+git checkout -b feature/123-new-feature
+
+# 2. Make commits (atomic, logical units)
+git add src/auth.go
+git commit -m "feat(auth): add token validation"
+
+git add src/user.go
+git commit -m "feat(auth): add user profile endpoint"
+
+# 3. Keep branch updated (rebase)
+git fetch origin
+git rebase origin/main
+
+# 4. Push and create PR
+git push origin feature/123-new-feature
+
+# 5. After PR approved - squash or rebase merge
+```
+
+### Pattern 2: Hotfix Workflow
+
+```bash
+# 1. Create from main
+git checkout main
+git pull origin main
+git checkout -b hotfix/critical-bug
+
+# 2. Fix and commit
+git add src/security.go
+git commit -m "fix(security): patch XSS vulnerability"
+
+# 3. Merge to main immediately
+git checkout main
+git merge --no-ff hotfix/critical-bug
+git push origin main
+
+# 4. Also merge to develop
+git checkout develop
+git merge --no-ff hotfix/critical-bug
+git push origin develop
+
+# 5. Tag release
+git tag -a v1.2.1 -m "Security hotfix"
+git push origin v1.2.1
+```
+
+### Pattern 3: Rebase vs Merge
+
+```bash
+# ✅ Use Rebase - For feature branches (clean history)
+git checkout feature/123-new-feature
+git rebase main
+# Resolve conflicts
+git rebase --continue
+git push --force-with-lease origin feature/123-new-feature
+
+# ✅ Use Merge - For protected branches (preserve history)
+git checkout main
+git merge --no-ff feature/123-new-feature
+git push origin main
+
+# Decision Tree:
+# Your feature branch? → Rebase
+# Shared/protected branch? → Merge
+# Unsure? → Merge (safer)
+```
+
+---
+
+## 🎯 Commit Best Practices
+
+### Atomic Commits
+
+```bash
+# ✅ Good - One logical change each
+git add src/auth.go test/auth_test.go
+git commit -m "feat(auth): add token validation"
+
+git add docs/api.md
+git commit -m "docs(api): document auth endpoints"
+
+# ❌ Bad - Mixed unrelated changes
+git add src/auth.go src/download.go docs/readme.md
+git commit -m "various updates"
+```
+
+### Size Guidelines
+
+```bash
+# ✅ Good sizes
+1-10 files changed    # Ideal
+100-300 lines changed # Good for features
+
+# ⚠️ Too large (split into multiple commits)
+50+ files changed
+1000+ lines changed
+
+# ⚠️ Too small (combine with related changes)
+1 line changed (typo fix is exception)
+```
+
+### When to Split Commits
+
+```
+Large change includes:
+├─ Refactoring + new feature → Split into 2 commits
+├─ Multiple unrelated fixes → Split per fix
+├─ Code + docs + tests → Keep together (same feature)
+└─ Whitespace cleanup + logic → Split into 2 commits
+```
+
+### Commit Message Templates
+
+```bash
+# Set up template
+git config --global commit.template ~/.gitmessage
+
+# ~/.gitmessage content:
+# <type>(<scope>): <subject>
+# 
+# <body>
+# 
+# <footer>
+# 
+# Types: feat, fix, docs, refactor, test, perf, style, chore
+# Scope: component/module name
+# Subject: imperative mood, ≤50 chars, no period
+# Body: wrap at 72 chars, explain WHY
+# Footer: Closes #123, BREAKING CHANGE
+```
+
+---
+
+## 🔍 Code Review & Pull Requests
+
+### PR Title Format
+
+```bash
+# Same as commit message format
+feat(auth): add GitHub OAuth login
+fix(download): handle connection timeout
+```
+
+### PR Description Template
+
+```markdown
+## Description
+Brief explanation of changes
+
+## Type of Change
+- [ ] Bug fix (non-breaking change)
+- [ ] New feature (non-breaking change)
+- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ] Documentation update
+
+## Changes Made
+- Change 1
+- Change 2
+- Change 3
+
+## Testing
+- [ ] Unit tests pass
+- [ ] Integration tests pass
+- [ ] Manual testing completed
+
+## Related Issues
+Closes #123
+Refs #456
+
+## Screenshots (if applicable)
+[Add screenshots]
+
+## Checklist
+- [ ] Code follows project standards
+- [ ] Self-review completed
+- [ ] Comments added for complex logic
+- [ ] Documentation updated
+- [ ] No new warnings
+- [ ] Tests added/updated
+```
+
+### PR Size Guidelines
+
+| Size | Lines Changed | Files Changed | Review Time |
+|------|---------------|---------------|-------------|
+| XS | <10 | 1 | <5 min |
+| S | 10-100 | 1-5 | 10-30 min |
+| M | 100-300 | 5-15 | 30-60 min |
+| L | 300-1000 | 15-30 | 1-2 hours |
+| XL | >1000 | >30 | Split it! |
+
+**Rule**: If PR is XL, split into multiple PRs
+
+---
+
+## 🚫 Common Mistakes to Avoid
+
+| Mistake | Why Bad | Fix |
+|---------|---------|-----|
+| `git commit -m "update"` | Vague, not helpful | Describe WHAT was updated |
+| `git commit -am` | Stages all changes | Review with `git add -p` |
+| `git push --force` | Destroys history | Use `--force-with-lease` |
+| WIP commits in PR | Messy history | Squash before merge |
+| Merge conflicts in PR | Hard to review | Rebase before requesting review |
+| 1000+ line PR | Impossible to review | Split into smaller PRs |
+| No issue reference | Lost context | Add `Closes #123` |
+
+---
+
+## 🛠️ Git Commands Reference
+
+### Daily Workflow
+
+```bash
+# Start new work
+git checkout main
+git pull origin main
+git checkout -b feature/123-new-work
+
+# Make changes and commit
+git add -p              # Interactive staging
+git commit              # Opens editor for message
+git commit -m "feat(x): add y"  # Quick commit
+
+# Update with main
+git fetch origin
+git rebase origin/main
+# If conflicts:
+git rebase --continue
+git rebase --abort      # If need to start over
+
+# Push changes
+git push origin feature/123-new-work
+git push --force-with-lease origin feature/123  # After rebase
+```
+
+### Fixing Mistakes
+
+```bash
+# Undo last commit (keep changes)
+git reset --soft HEAD~1
+
+# Undo last commit (discard changes)
+git reset --hard HEAD~1
+
+# Amend last commit
+git add forgotten-file.go
+git commit --amend --no-edit
+
+# Change last commit message
+git commit --amend
+
+# Undo specific file
+git checkout HEAD -- file.go
+
+# Revert commit (safe for shared branches)
+git revert abc123
+
+# Interactive rebase (edit history)
+git rebase -i HEAD~3
+# Then: pick, reword, edit, squash, fixup, drop
+```
+
+### Stashing
+
+```bash
+# Save current work
+git stash save "work in progress"
+
+# List stashes
+git stash list
+
+# Apply stash
+git stash apply        # Keep in stash list
+git stash pop          # Apply and remove
+
+# Apply specific stash
+git stash apply stash@{1}
+
+# Clear stashes
+git stash clear
+```
+
+### Viewing History
+
+```bash
+# Pretty log
+git log --oneline --graph --all --decorate
+
+# File history
+git log --follow file.go
+
+# Who changed what
+git blame file.go
+
+# Find when bug was introduced
+git bisect start
+git bisect bad          # Current version is bad
+git bisect good v1.0    # v1.0 was good
+# Git will checkout commits, mark as good/bad
+git bisect reset        # When done
+```
+
+---
+
+## 🏷️ Tagging & Releases
+
+### Semantic Versioning
+
+```
+v<major>.<minor>.<patch>[-prerelease][+build]
+
+v1.2.3          # Release
+v1.2.3-alpha.1  # Pre-release
+v1.2.3+20230615 # Build metadata
+```
+
+### Version Bumping Rules
+
+| Change Type | Example | Bump |
+|-------------|---------|------|
+| Breaking change | Remove API endpoint | Major (1.0.0 → 2.0.0) |
+| New feature | Add new endpoint | Minor (1.0.0 → 1.1.0) |
+| Bug fix | Fix crash | Patch (1.0.0 → 1.0.1) |
+| Docs/style | Update README | No bump |
+
+### Creating Tags
+
+```bash
+# Lightweight tag
+git tag v1.2.3
+
+# Annotated tag (preferred)
+git tag -a v1.2.3 -m "Release version 1.2.3"
+
+# Tag specific commit
+git tag -a v1.2.3 abc123 -m "Release 1.2.3"
+
+# Push tags
+git push origin v1.2.3      # Single tag
+git push origin --tags      # All tags
+
+# Delete tag
+git tag -d v1.2.3           # Local
+git push origin :v1.2.3     # Remote
+```
+
+### Release Notes Format
+
+```markdown
+## v1.2.3 (2024-01-15)
+
+### Features
+- feat(auth): add GitHub OAuth login (#123)
+- feat(api): add rate limiting (#125)
+
+### Bug Fixes
+- fix(download): handle timeout errors (#124)
+- fix(parser): prevent crash on empty input (#126)
+
+### Performance
+- perf(query): add database indexing (#127)
+
+### Documentation
+- docs(api): update endpoint documentation (#128)
+
+### Breaking Changes
+- BREAKING CHANGE: /auth endpoint now requires client_id parameter
+
+### Contributors
+- @username1
+- @username2
+```
+
+---
+
+## 📋 Pre-Commit Checklist
+
+```bash
+# Before committing
+- [ ] Code compiles without errors
+- [ ] Tests pass: `go test ./...`
+- [ ] Linter passes: `golangci-lint run`
+- [ ] No debug code (console.log, print statements)
+- [ ] No commented-out code
+- [ ] Commit message follows format
+- [ ] Changes are atomic and logical
+
+# Before pushing
+- [ ] Branch is up-to-date with main
+- [ ] No merge conflicts
+- [ ] All commits have good messages
+- [ ] No sensitive data (tokens, passwords)
+
+# Before creating PR
+- [ ] PR title follows format
+- [ ] Description filled out
+- [ ] Related issues linked
+- [ ] Screenshots added (if UI changes)
+- [ ] Self-review completed
+```
+
+---
+
+## 🔧 Git Configuration
+
+### Recommended Settings
+
+```bash
+# User info
+git config --global user.name "Your Name"
+git config --global user.email "your.email@example.com"
+
+# Default editor
+git config --global core.editor "vim"
+
+# Default branch name
+git config --global init.defaultBranch main
+
+# Colorful output
+git config --global color.ui auto
+
+# Rebase by default on pull
+git config --global pull.rebase true
+
+# Auto-correct typos
+git config --global help.autocorrect 20
+
+# Credential caching (Linux/Mac)
+git config --global credential.helper cache
+git config --global credential.helper 'cache --timeout=3600'
+
+# Aliases (optional)
+git config --global alias.st status
+git config --global alias.co checkout
+git config --global alias.br branch
+git config --global alias.ci commit
+git config --global alias.lg "log --oneline --graph --all --decorate"
+```
+
+### .gitignore Best Practices
+
+```bash
+# ✅ Good structure
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Language specific
+node_modules/
+vendor/
+*.pyc
+__pycache__/
+
+# Build outputs
+dist/
+build/
+*.exe
+*.so
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# ❌ Don't ignore
+# - .gitignore itself
+# - Example/template files (use .example suffix)
+# - Lock files (package-lock.json, go.sum)
+```
+
+---
+
+## 🎓 Learning Resources
+
+- [Conventional Commits](https://www.conventionalcommits.org/)
+- [Git Book](https://git-scm.com/book/en/v2)
+- [Semantic Versioning](https://semver.org/)
+- [GitHub Flow](https://guides.github.com/introduction/flow/)
+
+---
+
+## 🔍 Quick Patterns Lookup
+
+**Need to undo last commit but keep changes?**
+→ `git reset --soft HEAD~1`
+
+**Need to update commit message?**
+→ `git commit --amend`
+
+**Need to combine last 3 commits?**
+→ `git rebase -i HEAD~3` then squash
+
+**Need to update branch with main?**
+→ `git fetch origin && git rebase origin/main`
+
+**Made commits on wrong branch?**
+→ `git cherry-pick <commit>` to correct branch
+
+**Need to find when bug was introduced?**
+→ `git bisect start`
+
+**Need to save work without committing?**
+→ `git stash save "description"`
+
+**PR too large to review?**
+→ Split into multiple smaller PRs
