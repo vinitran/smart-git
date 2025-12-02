@@ -140,6 +140,15 @@ func CreateAndCheckoutBranch(ctx context.Context, dir, name string) error {
 	return err
 }
 
+// CheckoutBranch switches the working tree to the specified existing branch.
+func CheckoutBranch(ctx context.Context, dir, name string) error {
+	if err := EnsureRepository(ctx, dir); err != nil {
+		return err
+	}
+	_, err := Run(ctx, dir, "checkout", name)
+	return err
+}
+
 // PushCurrentBranch pushes the current branch to origin, optionally setting upstream.
 func PushCurrentBranch(ctx context.Context, dir string, setUpstream bool) error {
 	branch, err := CurrentBranch(ctx, dir)
@@ -157,6 +166,25 @@ func PushCurrentBranch(ctx context.Context, dir string, setUpstream bool) error 
 	args = append(args, "origin", branch)
 
 	_, err = Run(ctx, dir, args...)
+	return err
+}
+
+// PullRebase pulls from the given remote/branch with --rebase.
+func PullRebase(ctx context.Context, dir, remote, branch string) error {
+	if err := EnsureRepository(ctx, dir); err != nil {
+		return err
+	}
+	if strings.TrimSpace(remote) == "" {
+		remote = "origin"
+	}
+	if strings.TrimSpace(branch) == "" {
+		var err error
+		branch, err = CurrentBranch(ctx, dir)
+		if err != nil {
+			return err
+		}
+	}
+	_, err := Run(ctx, dir, "pull", "--rebase", remote, branch)
 	return err
 }
 
