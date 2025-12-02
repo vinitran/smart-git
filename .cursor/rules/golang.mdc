@@ -1,0 +1,966 @@
+---
+alwaysApply: true
+---
+# Code Standards & Conventions (Go)
+
+## Overview
+
+This document defines the coding standards, conventions, and best practices for the ClaudeKit CLI codebase written in Go. All contributors must follow these guidelines to maintain code quality, consistency, and maintainability.
+
+## General Principles
+
+### Language
+- English everywhere and only
+
+### Core Philosophy
+- **YAGNI** (You Aren't Gonna Need It): Don't implement features until they're actually needed
+- **KISS** (Keep It Simple, Stupid): Favor simplicity over complexity
+- **DRY** (Don't Repeat Yourself): Avoid code duplication through abstraction
+- **Go Proverbs**: Clear is better than clever, embrace the Go way
+
+### Code Quality Goals
+- Readability over cleverness
+- Type safety and explicit error handling
+- Idiomatic Go patterns
+- Maintainability over micro-optimization
+- Testability built-in from the start
+
+## Go Standards
+
+### Project Structure
+```
+claudekit/
+├── cmd/
+│   └── claudekit/
+│       └── main.go           # Entry point
+├── internal/
+│   ├── commands/             # Command implementations
+│   │   ├── new.go
+│   │   ├── update.go
+│   │   └── version.go
+│   ├── auth/                 # Authentication logic
+│   │   ├── auth.go
+│   │   └── auth_test.go
+│   ├── github/               # GitHub API client
+│   │   ├── client.go
+│   │   └── types.go
+│   ├── download/             # Download manager
+│   │   ├── download.go
+│   │   └── extract.go
+│   ├── merge/                # File merger
+│   │   └── merge.go
+│   └── config/               # Configuration
+│       ├── config.go
+│       └── types.go
+├── pkg/
+│   ├── logger/               # Reusable logger
+│   │   └── logger.go
+│   └── pathutil/             # Path utilities
+│       └── pathutil.go
+├── go.mod
+├── go.sum
+└── README.md
+```
+
+### Package Organization
+- Use `internal/` for private packages
+- Use `pkg/` for public, reusable packages
+- One package per directory
+- Package name = directory name (lowercase, single word)
+
+### Imports Organization
+```go
+import (
+    // 1. Standard library
+    "context"
+    "fmt"
+    "os"
+    "path/filepath"
+    
+    // 2. External dependencies (alphabetical)
+    "github.com/google/go-github/v57/github"
+    "github.com/spf13/cobra"
+    "golang.org/x/oauth2"
+    
+    // 3. Internal packages (alphabetical)
+    "github.com/your-org/claudekit/internal/auth"
+    "github.com/your-org/claudekit/internal/config"
+    "github.com/your-org/claudekit/pkg/logger"
+)
+```
+
+## Naming Conventions
+
+### Variables and Functions
+```go
+// ✅ Good - MixedCaps for exported, mixedCaps for unexported
+func DownloadFile(ctx context.Context, url string) error {}
+func extractArchive(archivePath string) error {}
+
+var MaxExtractionSize int64 = 500 * 1024 * 1024
+var serviceAccountName = "github-token"
+
+// ✅ Good - Short names in limited scope
+for i, v := range items {
+    // i and v are fine here
+}
+
+// ✅ Good - Descriptive names for package-level
+var customClaudeFiles []string
+var targetDirectory string
+
+// ❌ Bad - Snake case or abbreviations at package level
+var tgt_dir string
+var dl_mgr *DownloadManager
+```
+
+### Types and Interfaces
+```go
+// ✅ Good - MixedCaps, descriptive names
+type AuthManager struct {
+    token string
+    method AuthMethod
+}
+
+type DownloadProgress struct {
+    Total      int64
+    Current    int64
+    Percentage float64
+}
+
+// ✅ Good - Interface names with -er suffix
+type Downloader interface {
+    Download(ctx context.Context, url string) error
+}
+
+type FileReader interface {
+    ReadFile(path string) ([]byte, error)
+}
+
+// ✅ Good - Type aliases for clarity
+type AuthMethod string
+type KitType string
+
+const (
+    AuthMethodGitHub  AuthMethod = "github"
+    AuthMethodToken   AuthMethod = "token"
+    AuthMethodPrompt  AuthMethod = "prompt"
+)
+```
+
+### Constants
+```go
+// ✅ Good - MixedCaps, grouped with const block
+const (
+    MaxExtractionSize = 500 * 1024 * 1024
+    ServiceName       = "claudekit-cli"
+    AccountName       = "github-token"
+    DefaultTimeout    = 30 * time.Second
+)
+
+// ✅ Good - Typed constants with iota
+type KitType int
+
+const (
+    KitTypeEngineer KitType = iota
+    KitTypeMarketing
+)
+
+// ❌ Bad - UPPER_SNAKE_CASE (not idiomatic Go)
+const MAX_EXTRACTION_SIZE = 500 * 1024 * 1024
+```
+
+### Boolean Variables
+```go
+// ✅ Good - Use is/has/can/should prefix
+var isNonInteractive bool = !term.IsTerminal(int(os.Stdin.Fd()))
+var hasAccess bool
+var canProceed bool
+var shouldExclude bool
+
+// ❌ Bad - Ambiguous boolean names
+var interactive bool
+var access bool
+```
+
+## Error Handling
+
+### Error Types
+```go
+// ✅ Good - Custom error types with structured data
+type ClaudeKitError struct {
+    Code       string
+    Message    string
+    StatusCode int
+    Err        error
+}
+
+func (e *ClaudeKitError) Error() string {
+    if e.Err != nil {
+        return fmt.Sprintf("%s: %v", e.Message, e.Err)
+    }
+    return e.Message
+}
+
+func (e *ClaudeKitError) Unwrap() error {
+    return e.Err
+}
+
+// ✅ Good - Specific error types
+type AuthenticationError struct {
+    *ClaudeKitError
+}
+
+func NewAuthenticationError(msg string, err error) *AuthenticationError {
+    return &AuthenticationError{
+        ClaudeKitError: &ClaudeKitError{
+            Code:       "AUTH_ERROR",
+            Message:    msg,
+            StatusCode: 401,
+            Err:        err,
+        },
+    }
+}
+
+// ✅ Good - Sentinel errors for common cases
+var (
+    ErrNotFound      = errors.New("resource not found")
+    ErrUnauthorized  = errors.New("unauthorized access")
+    ErrInvalidInput  = errors.New("invalid input")
+)
+```
+
+### Error Handling Patterns
+```go
+// ✅ Good - Check errors immediately
+release, err := github.GetLatestRelease(ctx, kitConfig)
+if err != nil {
+    return fmt.Errorf("failed to get release: %w", err)
+}
+
+// ✅ Good - Use errors.Is and errors.As
+if errors.Is(err, ErrNotFound) {
+    // Handle not found case
+}
+
+var authErr *AuthenticationError
+if errors.As(err, &authErr) {
+    // Handle authentication error specifically
+}
+
+// ✅ Good - Wrap errors with context
+if err := downloadFile(ctx, url, dest); err != nil {
+    return fmt.Errorf("download failed for %s: %w", url, err)
+}
+
+// ✅ Good - Defer cleanup with error checking
+func processFile(path string) (err error) {
+    f, err := os.Open(path)
+    if err != nil {
+        return err
+    }
+    defer func() {
+        if cerr := f.Close(); cerr != nil && err == nil {
+            err = cerr
+        }
+    }()
+    
+    // Process file...
+    return nil
+}
+
+// ❌ Bad - Ignoring errors
+_ = f.Close() // Don't ignore errors
+
+// ❌ Bad - Generic error messages
+return errors.New("error") // Not helpful
+```
+
+## Function Standards
+
+### Function Size
+- Target: **<50 lines** per function
+- Maximum: **<100 lines** per function
+- Extract complex logic into helper functions
+- Use early returns to reduce nesting
+
+### Function Design
+```go
+// ✅ Good - Single Responsibility Principle
+func downloadFile(ctx context.Context, url, destPath string) error {
+    resp, err := http.Get(url)
+    if err != nil {
+        return fmt.Errorf("http get failed: %w", err)
+    }
+    defer resp.Body.Close()
+    
+    f, err := os.Create(destPath)
+    if err != nil {
+        return fmt.Errorf("create file failed: %w", err)
+    }
+    defer f.Close()
+    
+    _, err = io.Copy(f, resp.Body)
+    return err
+}
+
+func extractArchive(ctx context.Context, archivePath, destDir string) error {
+    if strings.HasSuffix(archivePath, ".tar.gz") {
+        return extractTarGz(ctx, archivePath, destDir)
+    }
+    return extractZip(ctx, archivePath, destDir)
+}
+
+// ❌ Bad - Multiple responsibilities
+func downloadAndExtract(ctx context.Context, url, destDir string) error {
+    // Downloads, extracts, validates, and merges - too much!
+}
+```
+
+### Parameter Handling
+```go
+// ✅ Good - Use structs for >3 parameters
+type DownloadOptions struct {
+    URL     string
+    Name    string
+    Size    *int64  // Optional
+    DestDir string
+    Token   string
+}
+
+func downloadFile(ctx context.Context, opts DownloadOptions) (string, error) {
+    // ...
+}
+
+// ✅ Good - Use functional options pattern for flexibility
+type DownloadOption func(*downloadConfig)
+
+func WithTimeout(d time.Duration) DownloadOption {
+    return func(c *downloadConfig) {
+        c.timeout = d
+    }
+}
+
+func WithRetries(n int) DownloadOption {
+    return func(c *downloadConfig) {
+        c.retries = n
+    }
+}
+
+func Download(ctx context.Context, url string, opts ...DownloadOption) error {
+    cfg := &downloadConfig{
+        timeout: DefaultTimeout,
+        retries: 3,
+    }
+    for _, opt := range opts {
+        opt(cfg)
+    }
+    // ...
+}
+
+// Usage
+err := Download(ctx, url, WithTimeout(60*time.Second), WithRetries(5))
+```
+
+### Context Usage
+```go
+// ✅ Good - Context as first parameter
+func downloadFile(ctx context.Context, url, dest string) error {
+    req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+    if err != nil {
+        return err
+    }
+    // ...
+}
+
+// ✅ Good - Respect context cancellation
+func processLargeFile(ctx context.Context, path string) error {
+    for {
+        select {
+        case <-ctx.Done():
+            return ctx.Err()
+        default:
+            // Process chunk
+        }
+    }
+}
+
+// ❌ Bad - Context not used or ignored
+func downloadFile(url, dest string) error {
+    // No context usage
+}
+```
+
+## Struct Standards
+
+### Struct Design
+```go
+// ✅ Good - Clear, focused structs
+type DownloadManager struct {
+    client              *http.Client
+    maxExtractionSize   int64
+    totalExtractedSize  int64
+    excludePatterns     []string
+    ig                  *ignore.GitIgnore
+    
+    mu sync.Mutex // Protect shared state
+}
+
+// ✅ Good - Constructor function
+func NewDownloadManager(patterns []string) *DownloadManager {
+    return &DownloadManager{
+        client: &http.Client{
+            Timeout: DefaultTimeout,
+        },
+        maxExtractionSize: MaxExtractionSize,
+        excludePatterns:   patterns,
+        ig:                ignore.CompileIgnoreLines(patterns...),
+    }
+}
+
+// ✅ Good - Group related fields
+type GitHubRelease struct {
+    ID          int64
+    TagName     string
+    Name        string
+    CreatedAt   time.Time
+    
+    Assets []GitHubAsset
+}
+```
+
+### Methods vs Functions
+```go
+// ✅ Good - Method when operating on struct state
+func (dm *DownloadManager) Download(ctx context.Context, url string) error {
+    // Uses dm.client, dm.maxExtractionSize, etc.
+}
+
+// ✅ Good - Function for stateless operations
+func GetDownloadableAsset(release *GitHubRelease) (*GitHubAsset, error) {
+    // Pure function, no state needed
+}
+
+// ✅ Good - Pointer receiver when modifying
+func (dm *DownloadManager) IncrementSize(size int64) error {
+    dm.mu.Lock()
+    defer dm.mu.Unlock()
+    
+    dm.totalExtractedSize += size
+    if dm.totalExtractedSize > dm.maxExtractionSize {
+        return ErrMaxSizeExceeded
+    }
+    return nil
+}
+
+// ✅ Good - Value receiver when not modifying
+func (r GitHubRelease) IsPrerelease() bool {
+    return r.Prerelease
+}
+```
+
+## Interfaces
+
+### Interface Design
+```go
+// ✅ Good - Small, focused interfaces (often 1-3 methods)
+type Downloader interface {
+    Download(ctx context.Context, url string) (string, error)
+}
+
+type Extractor interface {
+    Extract(ctx context.Context, archivePath, destDir string) error
+}
+
+// ✅ Good - Accept interfaces, return structs
+func ProcessArchive(ctx context.Context, d Downloader, e Extractor, url string) error {
+    path, err := d.Download(ctx, url)
+    if err != nil {
+        return err
+    }
+    return e.Extract(ctx, path, "/tmp")
+}
+
+// ✅ Good - Compose interfaces
+type DownloadExtractor interface {
+    Downloader
+    Extractor
+}
+```
+
+## Concurrency
+
+### Goroutines
+```go
+// ✅ Good - Use context for cancellation
+func processFiles(ctx context.Context, files []string) error {
+    errCh := make(chan error, len(files))
+    
+    for _, file := range files {
+        file := file // Capture loop variable
+        go func() {
+            errCh <- processFile(ctx, file)
+        }()
+    }
+    
+    for range files {
+        if err := <-errCh; err != nil {
+            return err
+        }
+    }
+    return nil
+}
+
+// ✅ Good - Use sync.WaitGroup for coordination
+func downloadConcurrently(ctx context.Context, urls []string) error {
+    var wg sync.WaitGroup
+    errCh := make(chan error, len(urls))
+    
+    for _, url := range urls {
+        wg.Add(1)
+        url := url
+        go func() {
+            defer wg.Done()
+            if err := download(ctx, url); err != nil {
+                errCh <- err
+            }
+        }()
+    }
+    
+    wg.Wait()
+    close(errCh)
+    
+    for err := range errCh {
+        if err != nil {
+            return err
+        }
+    }
+    return nil
+}
+
+// ✅ Good - Use errgroup for error handling
+import "golang.org/x/sync/errgroup"
+
+func downloadWithErrGroup(ctx context.Context, urls []string) error {
+    g, ctx := errgroup.WithContext(ctx)
+    
+    for _, url := range urls {
+        url := url
+        g.Go(func() error {
+            return download(ctx, url)
+        })
+    }
+    
+    return g.Wait()
+}
+```
+
+### Synchronization
+```go
+// ✅ Good - Use sync.Mutex for shared state
+type Cache struct {
+    mu    sync.RWMutex
+    items map[string]interface{}
+}
+
+func (c *Cache) Get(key string) (interface{}, bool) {
+    c.mu.RLock()
+    defer c.mu.RUnlock()
+    val, ok := c.items[key]
+    return val, ok
+}
+
+func (c *Cache) Set(key string, val interface{}) {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    c.items[key] = val
+}
+
+// ✅ Good - Use channels for communication
+type Worker struct {
+    jobs    chan Job
+    results chan Result
+}
+
+func (w *Worker) Start(ctx context.Context) {
+    go func() {
+        for {
+            select {
+            case <-ctx.Done():
+                return
+            case job := <-w.jobs:
+                w.results <- w.process(job)
+            }
+        }
+    }()
+}
+```
+
+## Testing Standards
+
+### Test Organization
+```go
+// ✅ Good - Table-driven tests
+func TestDownloadFile(t *testing.T) {
+    tests := []struct {
+        name    string
+        url     string
+        want    string
+        wantErr bool
+    }{
+        {
+            name:    "valid url",
+            url:     "https://example.com/file.txt",
+            want:    "/tmp/file.txt",
+            wantErr: false,
+        },
+        {
+            name:    "invalid url",
+            url:     "not-a-url",
+            want:    "",
+            wantErr: true,
+        },
+    }
+    
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got, err := downloadFile(context.Background(), tt.url)
+            if (err != nil) != tt.wantErr {
+                t.Errorf("downloadFile() error = %v, wantErr %v", err, tt.wantErr)
+                return
+            }
+            if got != tt.want {
+                t.Errorf("downloadFile() = %v, want %v", got, tt.want)
+            }
+        })
+    }
+}
+
+// ✅ Good - Use testify for assertions (optional)
+import "github.com/stretchr/testify/assert"
+
+func TestMergeFiles(t *testing.T) {
+    merger := NewFileMerger()
+    err := merger.Merge(ctx, sourceDir, destDir)
+    
+    assert.NoError(t, err)
+    assert.FileExists(t, filepath.Join(destDir, "file.txt"))
+}
+```
+
+### Test Helpers
+```go
+// ✅ Good - Test helpers with t.Helper()
+func createTempDir(t *testing.T) string {
+    t.Helper()
+    dir, err := os.MkdirTemp("", "test")
+    if err != nil {
+        t.Fatalf("failed to create temp dir: %v", err)
+    }
+    t.Cleanup(func() {
+        os.RemoveAll(dir)
+    })
+    return dir
+}
+
+// ✅ Good - Use t.Cleanup for cleanup
+func TestWithResources(t *testing.T) {
+    f, err := os.CreateTemp("", "test")
+    if err != nil {
+        t.Fatal(err)
+    }
+    t.Cleanup(func() {
+        f.Close()
+        os.Remove(f.Name())
+    })
+    
+    // Use f...
+}
+```
+
+### Mocking
+```go
+// ✅ Good - Interface-based mocking
+type MockDownloader struct {
+    DownloadFunc func(ctx context.Context, url string) (string, error)
+}
+
+func (m *MockDownloader) Download(ctx context.Context, url string) (string, error) {
+    if m.DownloadFunc != nil {
+        return m.DownloadFunc(ctx, url)
+    }
+    return "", errors.New("not implemented")
+}
+
+func TestWithMock(t *testing.T) {
+    mock := &MockDownloader{
+        DownloadFunc: func(ctx context.Context, url string) (string, error) {
+            return "/tmp/file", nil
+        },
+    }
+    
+    // Use mock...
+}
+```
+
+## Security Standards
+
+### Path Validation
+```go
+// ✅ Good - Validate paths before operations
+func isPathSafe(basePath, targetPath string) (bool, error) {
+    base, err := filepath.Abs(basePath)
+    if err != nil {
+        return false, err
+    }
+    
+    target, err := filepath.Abs(targetPath)
+    if err != nil {
+        return false, err
+    }
+    
+    rel, err := filepath.Rel(base, target)
+    if err != nil {
+        return false, err
+    }
+    
+    return !strings.HasPrefix(rel, ".."), nil
+}
+
+// ✅ Good - Use filepath.Clean
+func sanitizePath(path string) string {
+    return filepath.Clean(path)
+}
+```
+
+### Token Handling
+```go
+// ✅ Good - Never log tokens
+logger.Debug("auth method", "method", method)
+// ❌ logger.Debug("token", "value", token)
+
+// ✅ Good - Sanitize sensitive data in logs
+func sanitizeURL(u string) string {
+    parsed, err := url.Parse(u)
+    if err != nil {
+        return u
+    }
+    if parsed.User != nil {
+        parsed.User = url.User("***")
+    }
+    return parsed.String()
+}
+```
+
+## Logging
+
+### Structured Logging
+```go
+// ✅ Good - Use structured logging (slog)
+import "log/slog"
+
+func downloadFile(ctx context.Context, url, dest string) error {
+    slog.InfoContext(ctx, "downloading file",
+        "url", sanitizeURL(url),
+        "dest", dest,
+    )
+    
+    // ...
+    
+    slog.InfoContext(ctx, "download complete",
+        "bytes", size,
+        "duration", time.Since(start),
+    )
+}
+
+// ✅ Good - Add context with logger
+logger := slog.With("component", "downloader")
+logger.Info("starting download", "url", url)
+```
+
+## Performance
+
+### Memory Efficiency
+```go
+// ✅ Good - Stream large files
+func copyFile(src, dst string) error {
+    in, err := os.Open(src)
+    if err != nil {
+        return err
+    }
+    defer in.Close()
+    
+    out, err := os.Create(dst)
+    if err != nil {
+        return err
+    }
+    defer out.Close()
+    
+    _, err = io.Copy(out, in)
+    return err
+}
+
+// ❌ Bad - Load entire file in memory
+func copyFile(src, dst string) error {
+    data, err := os.ReadFile(src)
+    if err != nil {
+        return err
+    }
+    return os.WriteFile(dst, data, 0644)
+}
+```
+
+### Buffer Reuse
+```go
+// ✅ Good - Use sync.Pool for buffer reuse
+var bufferPool = sync.Pool{
+    New: func() interface{} {
+        return make([]byte, 32*1024)
+    },
+}
+
+func processData(r io.Reader) error {
+    buf := bufferPool.Get().([]byte)
+    defer bufferPool.Put(buf)
+    
+    // Use buffer...
+}
+```
+
+## Documentation
+
+### Package Documentation
+```go
+// Package download provides file download and extraction utilities.
+//
+// It supports downloading from HTTP/HTTPS URLs with authentication
+// and extracting various archive formats (tar.gz, zip).
+//
+// Basic usage:
+//
+//     dm := download.NewManager()
+//     path, err := dm.Download(ctx, url)
+//     if err != nil {
+//         log.Fatal(err)
+//     }
+package download
+```
+
+### Function Documentation
+```go
+// DownloadFile downloads a file from the given URL to the destination path.
+// It supports resume on failure and validates checksums if provided.
+//
+// The context can be used to cancel the download operation.
+// If size is provided, it will show download progress.
+//
+// Example:
+//
+//     err := DownloadFile(ctx, "https://example.com/file.zip", "/tmp/file.zip", nil)
+//
+func DownloadFile(ctx context.Context, url, dest string, size *int64) error {
+    // ...
+}
+```
+
+## Git Commit Standards
+
+Follow same conventions as TypeScript version:
+```
+type(scope): subject
+
+body (optional)
+
+footer (optional)
+```
+
+### Types
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation changes
+- `refactor`: Code refactoring
+- `test`: Tests
+- `chore`: Build/tools
+
+## Tools & Automation
+
+### Linting
+```bash
+# Install golangci-lint
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+# Run linter
+golangci-lint run
+
+# Auto-fix issues
+golangci-lint run --fix
+```
+
+### Formatting
+```bash
+# Format code
+go fmt ./...
+
+# Use goimports for import management
+goimports -w .
+```
+
+### Testing
+```bash
+# Run tests
+go test ./...
+
+# With coverage
+go test -cover ./...
+
+# Race detection
+go test -race ./...
+
+# Verbose output
+go test -v ./...
+```
+
+### Static Analysis
+```bash
+# Vet
+go vet ./...
+
+# Security scanning
+gosec ./...
+
+# Dependency check
+go mod verify
+```
+
+## Code Review Checklist
+
+### Before Submitting
+- [ ] Code follows Go idioms and conventions
+- [ ] All errors are properly handled
+- [ ] Tests written and passing
+- [ ] No race conditions (run with `-race`)
+- [ ] Documentation updated
+- [ ] `go fmt` and `go vet` pass
+- [ ] No security vulnerabilities
+
+### During Review
+- [ ] Interfaces used appropriately
+- [ ] Concurrency handled safely
+- [ ] Error messages are helpful
+- [ ] No resource leaks
+- [ ] Performance considerations addressed
+
+## Continuous Improvement
+
+### Metrics
+- Maintain >80% test coverage
+- Keep average function size <50 lines
+- Monitor cyclomatic complexity
+- Track and reduce code duplication
+- Regular dependency updates
+
+### Resources
+- [Effective Go](https://golang.org/doc/effective_go)
+- [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments)
+- [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md)
+- [Google Go Style Guide](https://google.github.io/styleguide/go/)
