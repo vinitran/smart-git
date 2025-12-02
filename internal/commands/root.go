@@ -19,6 +19,7 @@ var (
 		},
 	}
 	verbose bool
+	debug   bool
 )
 
 // Execute runs the root command for SmartGit.
@@ -31,11 +32,14 @@ func Execute() {
 
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
+	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", false, "Enable debug logging")
 }
 
 func setupLogger(ctx context.Context) error {
-	level := slog.LevelInfo
-	if verbose {
+	// Default: keep logging very quiet (only errors).
+	level := slog.LevelError
+	// If either verbose or debug is enabled, show debug/info logs.
+	if verbose || debug {
 		level = slog.LevelDebug
 	}
 	logger.Setup(level)

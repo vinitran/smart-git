@@ -48,6 +48,11 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	repoInfo, err := git.GetRepoInfo(ctx, wd)
+	if err != nil {
+		return err
+	}
+
 	branch, err := git.CurrentBranch(ctx, wd)
 	if err != nil {
 		return err
@@ -98,13 +103,60 @@ func runPush(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		fmt.Printf("Pushed branch '%s' to origin.\n", branch)
-		return nil
+	} else {
+		log.InfoContext(ctx, "No upstream set for current branch, pushing with -u", "branch", branch)
+		if err := git.PushCurrentBranch(ctx, wd, true); err != nil {
+			return err
+		}
+		fmt.Printf("Pushed branch '%s' to origin and set upstream tracking.\n", branch)
 	}
 
-	log.InfoContext(ctx, "No upstream set for current branch, pushing with -u", "branch", branch)
-	if err := git.PushCurrentBranch(ctx, wd, true); err != nil {
-		return err
+	if url := buildBranchURL(repoInfo.Remote, branch); url != "" {
+		fmt.Printf("Branch URL: %s\n", url)
 	}
-	fmt.Printf("Pushed branch '%s' to origin and set upstream tracking.\n", branch)
+
 	return nil
+}
+
+// buildBranchURL attempts to generate a GitHub branch URL from the remote URL and branch name.
+// It supports common SSH and HTTPS GitHub URL formats and returns an empty string if it cannot
+// confidently derive a URL.
+func buildBranchURL(remote, branch string) string {
+	remote = strings.TrimSpace(remote)
+	branch = strings.TrimSpace(branch)
+	if remote == "" || branch == "" {
+		return ""
+	}
+
+	const host = "github.com"
+
+	// SSH format: git@github.com:owner/repo.git
+	if strings.HasPrefix(remote, "git@"+host+":") {
+		path := strings.TrimPrefix(remote, "git@"+host+":")
+		if strings.HasSuffix(path, ".git") {
+			path = strings.TrimSuffix(path, ".git")
+		}
+		if path == "" {
+			return ""
+		}
+		return fmt.Sprintf("https://%s/%s/tree/%s", host, path, branch)
+	}
+
+	// HTTPS/HTTP/git formats: https://github.com/owner/repo.git
+	for _, prefix := range []string{"https://" + host + "/", "http://" + host + "/", "git://" + host + "/"} {
+		if strings.HasPrefix(remote, prefix) {
+			path := strings.TrimPrefix(remote, prefix)
+			// Remove possible trailing .git or slash.
+			if strings.HasSuffix(path, ".git") {
+				path = strings.TrimSuffix(path, ".git")
+			}
+			path = strings.TrimSuffix(path, "/")
+			if path == "" {
+				return ""
+			}
+			return fmt.Sprintf("https://%s/%s/tree/%s", host, path, branch)
+		}
+	}
+
+	return ""
 }
