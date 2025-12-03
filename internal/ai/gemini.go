@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -29,6 +30,41 @@ type Client struct {
 	httpClient *http.Client
 	maxTokens  int
 	baseURL    string
+}
+
+// RiskLevel represents the AI-assessed risk when running a suggested command.
+// It is intentionally simple to keep the UX and safety logic straightforward.
+type RiskLevel string
+
+const (
+	RiskLevelLow    RiskLevel = "low"
+	RiskLevelMedium RiskLevel = "medium"
+	RiskLevelHigh   RiskLevel = "high"
+)
+
+// SuggestedCommand is a single CLI command recommendation returned by the AI.
+type SuggestedCommand struct {
+	Command     string    `json:"command"`
+	Description string    `json:"description"`
+	Risk        RiskLevel `json:"risk"`
+	Reason      string    `json:"reason,omitempty"`
+	Tags        []string  `json:"tags,omitempty"`
+}
+
+// SystemContext describes the runtime environment so the AI can tailor
+// suggestions (e.g., macOS vs Linux, git repo vs plain folder).
+type SystemContext struct {
+	OS         string       `json:"os"`
+	Shell      string       `json:"shell"`
+	WorkingDir string       `json:"working_dir"`
+	InGitRepo  bool         `json:"in_git_repo"`
+	Repo       git.RepoInfo `json:"repo"`
+}
+
+// commandSuggestionEnvelope is the JSON wrapper we expect from Gemini.
+// Keeping this type private avoids leaking transport details to callers.
+type commandSuggestionEnvelope struct {
+	Commands []SuggestedCommand `json:"commands"`
 }
 
 // ReviewRequest bundles the information sent to Gemini for analysis.
@@ -81,6 +117,158 @@ func NewClient(apiKey string, maxTokens int) *Client {
 		maxTokens: maxTokens,
 		baseURL:   defaultBaseURL,
 	}
+}
+
+// SuggestCommands asks Gemini to propose CLI commands for a natural-language
+// request, given the current system context. The AI is instructed to respond
+// with a strict, machine-parseable JSON structure.
+func (c *Client) SuggestCommands(ctx context.Context, message string, sysCtx SystemContext) ([]SuggestedCommand, error) {
+	var suggestions []SuggestedCommand
+
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return suggestions, errors.New("message must not be empty")
+	}
+
+	// Fill in OS from runtime as a fallback if the caller did not populate it.
+	if strings.TrimSpace(sysCtx.OS) == "" {
+		sysCtx.OS = runtime.GOOS
+	}
+
+	var builder strings.Builder
+	builder.WriteString("You are an expert command-line assistant.\n")
+	builder.WriteString("Your job is to translate a user's natural language request into safe, concrete shell commands for their environment.\n")
+	builder.WriteString("Always prefer read-only or low-risk commands when possible (inspect, list, show status) over destructive operations.\n")
+	builder.WriteString("If a task could be done in multiple ways, choose the safest and simplest command first.\n")
+	builder.WriteString("\n")
+	builder.WriteString("User request (natural language):\n")
+	builder.WriteString(message)
+	builder.WriteString("\n\n")
+	builder.WriteString("System context (may be approximate):\n")
+	builder.WriteString(fmt.Sprintf("- OS: %s\n", sysCtx.OS))
+	builder.WriteString("- When OS is \"darwin\", treat it as macOS. Prefer built-in macOS tools such as: top, vm_stat, df, ps, iostat, etc.\n")
+	builder.WriteString("- Avoid suggesting Linux-only tools on macOS such as free, /proc-based commands, or other utilities that are not available by default.\n")
+	builder.WriteString(fmt.Sprintf("- Shell: %s\n", sysCtx.Shell))
+	builder.WriteString(fmt.Sprintf("- Working directory: %s\n", sysCtx.WorkingDir))
+	if sysCtx.InGitRepo {
+		builder.WriteString(fmt.Sprintf("- Git repo path: %s\n", sysCtx.Repo.Path))
+		builder.WriteString(fmt.Sprintf("- Git branch: %s\n", sysCtx.Repo.Branch))
+		builder.WriteString(fmt.Sprintf("- Git remote: %s\n", sysCtx.Repo.Remote))
+	} else {
+		builder.WriteString("- Not inside a git repository.\n")
+	}
+	builder.WriteString("\n")
+	builder.WriteString("JSON response requirements (very important):\n")
+	builder.WriteString("- Respond ONLY as a single valid JSON object, with no extra text, no explanation, no markdown, and no code fences.\n")
+	builder.WriteString("- The JSON must have exactly this shape and key names:\n")
+	builder.WriteString(`{"commands":[{"command":"<shell command>","description":"<short human explanation>","risk":"<low|medium|high>","reason":"<why this command fits>","tags":["tag1","tag2"]}]}` + "\n")
+	builder.WriteString("- The top-level object MUST contain a \"commands\" array.\n")
+	builder.WriteString("- Put the BEST, safest command that most directly satisfies the request as the FIRST element in the array.\n")
+	builder.WriteString("- You may include up to 3 commands total. If only one command is clearly best, return a single-element array.\n")
+	builder.WriteString("- The \"command\" value must be a single-line shell command ready to paste into a terminal.\n")
+	builder.WriteString("- The \"description\" must be short, clear, and end without a period.\n")
+	builder.WriteString("- The \"risk\" field must be one of exactly: low, medium, high (lowercase).\n")
+	builder.WriteString("- Use risk=low for read-only commands (viewing status, logs, memory, disk, etc.).\n")
+	builder.WriteString("- Use risk=medium for commands that modify local state but are reversible or low impact.\n")
+	builder.WriteString("- Use risk=high ONLY for destructive or hard-to-undo actions (deleting data, rewriting git history, formatting disks, etc.).\n")
+	builder.WriteString("- Avoid suggesting high-risk commands unless the user explicitly asks for a destructive operation.\n")
+	builder.WriteString("- The \"reason\" field should briefly explain why the command is appropriate for the request.\n")
+	builder.WriteString("- The \"tags\" field is optional but recommended; use simple tags like system, git, network, process, disk, ram, cpu.\n")
+	builder.WriteString("- Do NOT wrap the JSON in ``` or ```json. Do NOT add any commentary before or after the JSON.\n")
+
+	userPrompt := builder.String()
+
+	payload := generateContentRequest{
+		Contents: []content{
+			{
+				Role: "user",
+				Parts: []part{
+					{Text: userPrompt},
+				},
+			},
+		},
+		GenerationConfig: &generationConfig{
+			MaxOutputTokens: intPtr(c.maxTokens),
+			Temperature:     floatPtr(0.4),
+		},
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return suggestions, err
+	}
+
+	url := fmt.Sprintf("%s/models/%s:generateContent?key=%s", c.baseURL, c.model, c.apiKey)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return suggestions, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	httpResp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return suggestions, err
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != http.StatusOK {
+		var apiErr map[string]any
+		_ = json.NewDecoder(httpResp.Body).Decode(&apiErr)
+		return suggestions, fmt.Errorf("gemini API error: status=%d body=%v", httpResp.StatusCode, apiErr)
+	}
+
+	var genResp generateContentResponse
+	if err := json.NewDecoder(httpResp.Body).Decode(&genResp); err != nil {
+		return suggestions, err
+	}
+
+	text, err := genResp.extractText()
+	if err != nil {
+		return suggestions, err
+	}
+
+	rawJSON := extractJSONBlock(text)
+	if strings.TrimSpace(rawJSON) == "" {
+		return suggestions, fmt.Errorf("failed to find JSON object in Gemini response: %q", text)
+	}
+
+	var envelope commandSuggestionEnvelope
+	if err := json.Unmarshal([]byte(rawJSON), &envelope); err != nil {
+		return suggestions, fmt.Errorf("failed to parse command suggestions JSON from Gemini: %w; raw=%q", err, rawJSON)
+	}
+
+	// Normalize risk values and filter out clearly invalid entries.
+	for _, s := range envelope.Commands {
+		cmd := strings.TrimSpace(s.Command)
+		if cmd == "" {
+			continue
+		}
+		desc := strings.TrimSpace(s.Description)
+		risk := RiskLevel(strings.ToLower(strings.TrimSpace(string(s.Risk))))
+		if risk == "" {
+			risk = RiskLevelLow
+		}
+		switch risk {
+		case RiskLevelLow, RiskLevelMedium, RiskLevelHigh:
+			// ok
+		default:
+			risk = RiskLevelMedium
+		}
+
+		suggestions = append(suggestions, SuggestedCommand{
+			Command:     cmd,
+			Description: desc,
+			Risk:        risk,
+			Reason:      strings.TrimSpace(s.Reason),
+			Tags:        s.Tags,
+		})
+	}
+
+	if len(suggestions) == 0 {
+		return suggestions, errors.New("Gemini returned no usable command suggestions")
+	}
+
+	return suggestions, nil
 }
 
 // ReviewDiff sends the diff to Gemini for feedback and returns the response text.
