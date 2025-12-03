@@ -25,11 +25,10 @@ type commandSuggestOptions struct {
 
 var (
 	commandSuggestCmd = &cobra.Command{
-		Use:     "command",
-		Aliases: []string{"cm"},
-		Short:   "Ask AI to suggest shell commands from a natural language request",
-		Args:    cobra.MinimumNArgs(1),
-		RunE:    runCommandSuggest,
+		Use:   "command",
+		Short: "Ask AI to suggest shell commands from a natural language request",
+		Args:  cobra.MinimumNArgs(1),
+		RunE:  runCommandSuggest,
 	}
 	commandSuggestOpts commandSuggestOptions
 )
