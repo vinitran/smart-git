@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
+
 	"github.com/vinhtran/git-smart/internal/ai"
 	"github.com/vinhtran/git-smart/internal/git"
 	"github.com/vinhtran/git-smart/pkg/logger"
@@ -25,12 +26,21 @@ type commandSuggestOptions struct {
 
 var (
 	commandSuggestCmd = &cobra.Command{
-		Use:   "command",
-		Short: "Ask AI to suggest shell commands from a natural language request",
-		Args:  cobra.MinimumNArgs(1),
-		RunE:  runCommandSuggest,
+		Use:     "command",
+		Aliases: []string{"cmd"},
+		Short:   "Ask AI to suggest shell commands from a natural language request",
+		Args:    cobra.MinimumNArgs(1),
+		RunE:    runCommandSuggest,
 	}
 	commandSuggestOpts commandSuggestOptions
+)
+
+const (
+	colorReset  = "\033[0m"
+	colorCyan   = "\033[36m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorRed    = "\033[31m"
 )
 
 func init() {
@@ -84,107 +94,121 @@ func runCommandSuggest(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	primary := suggestions[0]
-	primary.Risk = normalizeRisk(primary.Command, primary.Risk)
-
 	if commandSuggestOpts.dryRun {
-		renderSuggestions(message, primary, suggestions)
+		renderSuggestions(message, suggestions)
 		fmt.Println("Dry run mode: no commands will be executed.")
 		return nil
 	}
 
 	if commandSuggestOpts.autoAccept {
-		renderSuggestions(message, primary, suggestions)
+		primary := suggestions[0]
+		primary.Risk = normalizeRisk(primary.Command, primary.Risk)
+		renderSuggestions(message, suggestions)
 		return runSuggestedCommand(ctx, primary)
 	}
 
-	reader := bufio.NewReader(os.Stdin)
-
-	for {
-		renderSuggestions(message, primary, suggestions)
-		fmt.Print("Run this command? [y]es / [n]o / [e]dit / [s]ee more: ")
-
-		line, _ := reader.ReadString('\n')
-		choice := strings.ToLower(strings.TrimSpace(line))
-
-		switch choice {
-		case "y", "yes", "":
-			return runSuggestedCommand(ctx, primary)
-		case "n", "no":
-			fmt.Println("Cancelled. No command was executed.")
-			return nil
-		case "e", "edit":
-			fmt.Print("Enter the exact command you want to run: ")
-			line, _ := reader.ReadString('\n')
-			edited := strings.TrimSpace(line)
-			if edited != "" {
-				primary.Command = edited
-				primary.Risk = normalizeRisk(primary.Command, primary.Risk)
-			}
-		case "s", "see", "more":
-			selected, ok := selectAlternateSuggestion(reader, suggestions, primary)
-			if ok {
-				primary = selected
-				primary.Risk = normalizeRisk(primary.Command, primary.Risk)
-			}
-		default:
-			fmt.Println("Invalid choice, please try again.")
-		}
+	selected, ok := chooseSuggestionInteractive(message, suggestions)
+	if !ok {
+		fmt.Println("Cancelled. No command was executed.")
+		return nil
 	}
+	selected.Risk = normalizeRisk(selected.Command, selected.Risk)
+	return runSuggestedCommand(ctx, selected)
 }
 
-func renderSuggestions(message string, primary ai.SuggestedCommand, all []ai.SuggestedCommand) {
-	divider := strings.Repeat("-", 60)
-	fmt.Println(divider)
-	fmt.Printf("Your request: %s\n", message)
-	fmt.Println(divider)
+func renderSuggestions(message string, suggestions []ai.SuggestedCommand) {
+	divider := strings.Repeat("─", 50)
+	fmt.Printf("%s%s%s\n", colorCyan, divider, colorReset)
+	fmt.Printf("%ssg cmd%s  %s\n", colorCyan, colorReset, message)
+	fmt.Printf("%s%s%s\n", colorCyan, divider, colorReset)
 
-	fmt.Println("Top suggestion:")
-	fmt.Printf("  > %s\n", primary.Command)
-	if strings.TrimSpace(primary.Description) != "" {
-		fmt.Printf("    Description: %s\n", primary.Description)
+	limit := len(suggestions)
+	if limit > 2 {
+		limit = 2
 	}
 
-	riskLabel := strings.ToUpper(string(primary.Risk))
-	fmt.Printf("    Risk: %s\n", riskLabel)
-	if strings.TrimSpace(primary.Reason) != "" {
-		fmt.Printf("    Reason: %s\n", primary.Reason)
+	for i := 0; i < limit; i++ {
+		s := suggestions[i]
+		risk := strings.ToUpper(string(s.Risk))
+		riskColor := colorForRisk(s.Risk)
+		desc := strings.TrimSpace(s.Description)
+		if desc == "" {
+			desc = "no description"
+		}
+		fmt.Printf("[%d] %s%s%s  %s(%s)%s - %s\n",
+			i+1,
+			colorCyan, s.Command, colorReset,
+			riskColor, risk, colorReset,
+			desc,
+		)
 	}
 
-	if len(all) > 1 {
-		fmt.Printf("\nThere are %d more suggestion(s). Press [s]ee more to view details.\n", len(all)-1)
-	}
-	fmt.Println(divider)
+	cancelIndex := limit + 1
+	fmt.Printf("[%d] %sCancel%s\n", cancelIndex, colorRed, colorReset)
+	fmt.Printf("%s%s%s\n", colorCyan, divider, colorReset)
 }
 
-func selectAlternateSuggestion(reader *bufio.Reader, suggestions []ai.SuggestedCommand, current ai.SuggestedCommand) (ai.SuggestedCommand, bool) {
-	if len(suggestions) <= 1 {
-		fmt.Println("There is only one suggestion at the moment.")
-		return current, false
+func chooseSuggestionInteractive(message string, suggestions []ai.SuggestedCommand) (ai.SuggestedCommand, bool) {
+	limit := len(suggestions)
+	if limit > 2 {
+		limit = 2
 	}
 
-	fmt.Println("Other suggestions:")
-	for i, s := range suggestions {
-		fmt.Printf("  %d) %s (risk: %s)\n", i+1, s.Command, strings.ToUpper(string(s.Risk)))
-		if desc := strings.TrimSpace(s.Description); desc != "" {
-			fmt.Printf("     - %s\n", desc)
+	// Build option labels (including Cancel).
+	items := make([]string, 0, limit+1)
+	for i := 0; i < limit; i++ {
+		s := suggestions[i]
+		risk := strings.ToUpper(string(s.Risk))
+		riskLabel := risk
+		if s.Risk == ai.RiskLevelHigh {
+			riskLabel = fmt.Sprintf("%s%s%s", colorRed, risk, colorReset)
+		}
+		items = append(items, fmt.Sprintf("%s  (%s)", s.Command, riskLabel))
+	}
+	items = append(items, "Cancel")
+
+	summary := buildRequestSummary(message, suggestions)
+
+	prompt := promptui.Select{
+		Label:    fmt.Sprintf("%s", summary),
+		Items:    items,
+		Size:     len(items),
+		HideHelp: true,
+		Templates: &promptui.SelectTemplates{
+			Label:    fmt.Sprintf("%s{{ . }}%s", colorCyan, colorReset),
+			Active:   fmt.Sprintf("%s▸ {{ . | cyan }}%s", colorCyan, colorReset),
+			Inactive: "  {{ . }}",
+			Selected: fmt.Sprintf("%s✓{{ . }}%s", colorGreen, colorReset),
+		},
+	}
+
+	index, _, err := prompt.Run()
+	if err != nil {
+		return ai.SuggestedCommand{}, false
+	}
+
+	if index >= limit {
+		return ai.SuggestedCommand{}, false
+	}
+
+	return suggestions[index], true
+}
+
+// buildRequestSummary creates a very short, human-readable summary line
+// based primarily on the first AI suggestion's description, falling back
+// to the original message when needed.
+func buildRequestSummary(message string, suggestions []ai.SuggestedCommand) string {
+	base := strings.TrimSpace(message)
+	if len(suggestions) > 0 {
+		desc := strings.TrimSpace(suggestions[0].Description)
+		if desc != "" {
+			base = desc
 		}
 	}
-
-	fmt.Print("Enter a number to pick a different suggestion (or press Enter to keep current): ")
-	line, _ := reader.ReadString('\n')
-	trimmed := strings.TrimSpace(line)
-	if trimmed == "" {
-		return current, false
+	if len(base) > 60 {
+		base = base[:57] + "..."
 	}
-
-	idx, err := strconv.Atoi(trimmed)
-	if err != nil || idx < 1 || idx > len(suggestions) {
-		fmt.Println("Invalid number, keeping the current suggestion.")
-		return current, false
-	}
-
-	return suggestions[idx-1], true
+	return base
 }
 
 func runSuggestedCommand(ctx context.Context, suggestion ai.SuggestedCommand) error {
@@ -271,4 +295,17 @@ func normalizeRisk(cmd string, aiRisk ai.RiskLevel) ai.RiskLevel {
 		return ai.RiskLevelLow
 	}
 	return aiRisk
+}
+
+func colorForRisk(r ai.RiskLevel) string {
+	switch r {
+	case ai.RiskLevelLow:
+		return colorGreen
+	case ai.RiskLevelMedium:
+		return colorYellow
+	case ai.RiskLevelHigh:
+		return colorRed
+	default:
+		return colorReset
+	}
 }

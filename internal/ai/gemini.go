@@ -146,6 +146,8 @@ func (c *Client) SuggestCommands(ctx context.Context, message string, sysCtx Sys
 	builder.WriteString("\n\n")
 	builder.WriteString("System context (may be approximate):\n")
 	builder.WriteString(fmt.Sprintf("- OS: %s\n", sysCtx.OS))
+	builder.WriteString("- When OS is \"darwin\", treat it as macOS. Prefer built-in macOS tools such as: top, vm_stat, df, ps, iostat, etc.\n")
+	builder.WriteString("- Avoid suggesting Linux-only tools on macOS such as free, /proc-based commands, or other utilities that are not available by default.\n")
 	builder.WriteString(fmt.Sprintf("- Shell: %s\n", sysCtx.Shell))
 	builder.WriteString(fmt.Sprintf("- Working directory: %s\n", sysCtx.WorkingDir))
 	if sysCtx.InGitRepo {
