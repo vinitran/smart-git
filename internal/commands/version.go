@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -68,7 +68,7 @@ func runVersion(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if err := performSelfUpdate(ctx); err != nil {
+	if err := performSelfUpdate(ctx, latest); err != nil {
 		return fmt.Errorf("failed to update git-smart: %w", err)
 	}
 
@@ -101,16 +101,105 @@ func fetchLatestVersion(ctx context.Context) (string, error) {
 	return strings.TrimSpace(string(data)), nil
 }
 
-// performSelfUpdate tries to pull and rebuild the CLI binary.
-// For safety, it only runs if you configure the local repo path
-// via the GIT_SMART_HOME environment variable.
-func performSelfUpdate(ctx context.Context) error {
+// performSelfUpdate updates the CLI binary in-place.
+// Priority:
+//  1. If GIT_SMART_HOME is set, assume a local git clone and update via git+go build (developer flow).
+//  2. Otherwise, download the prebuilt release binary from GitHub (installer flow).
+func performSelfUpdate(ctx context.Context, latest string) error {
 	repoDir := strings.TrimSpace(os.Getenv("GIT_SMART_HOME"))
-	if repoDir == "" {
-		return fmt.Errorf("GIT_SMART_HOME is not set; please update manually (git pull && go build)")
+	if repoDir != "" {
+		return updateFromLocalRepo(ctx, repoDir)
+	}
+	return updateFromReleaseBinary(ctx, latest)
+}
+
+// updateFromReleaseBinary downloads the latest prebuilt binary from GitHub
+// and atomically replaces the currently running executable.
+func updateFromReleaseBinary(ctx context.Context, latest string) error {
+	goos := runtime.GOOS
+	goarch := runtime.GOARCH
+
+	var suffix string
+	switch goos {
+	case "darwin", "linux":
+		// ok
+	default:
+		return fmt.Errorf("automatic binary update is not supported on OS %q; please update manually", goos)
 	}
 
-	// 1. git pull --rebase
+	switch goarch {
+	case "amd64", "arm64":
+		// ok
+	default:
+		return fmt.Errorf("automatic binary update is not supported on architecture %q; please update manually", goarch)
+	}
+
+	suffix = fmt.Sprintf("%s-%s", goos, goarch)
+
+	const repoOwner = "vinitran"
+	const repoName = "smart-git"
+
+	tag := fmt.Sprintf("v%s", strings.TrimSpace(latest))
+	asset := fmt.Sprintf("sg-%s", suffix)
+	downloadURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s", repoOwner, repoName, tag, asset)
+
+	fmt.Printf("Downloading sg %s for %s/%s...\n", tag, goos, goarch)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("failed to download sg binary: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	tmpFile, err := os.CreateTemp("", "sg-update-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+		tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Chmod(0o755); err != nil {
+		tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("cannot determine current executable path: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, exePath); err != nil {
+		return fmt.Errorf("failed to replace existing sg binary: %w", err)
+	}
+
+	return nil
+}
+
+// updateFromLocalRepo updates the binary by running git pull + go build
+// in a local clone of the repository.
+func updateFromLocalRepo(ctx context.Context, repoDir string) error {
+	repoDir = strings.TrimSpace(repoDir)
+	if repoDir == "" {
+		return fmt.Errorf("GIT_SMART_HOME is empty; please update manually (git pull && go build)")
+	}
+
 	gitCmd := exec.CommandContext(ctx, "git", "pull", "--rebase")
 	gitCmd.Dir = repoDir
 	gitCmd.Stdout = os.Stdout
@@ -119,7 +208,6 @@ func performSelfUpdate(ctx context.Context) error {
 		return fmt.Errorf("git pull --rebase failed: %w", err)
 	}
 
-	// 2. go build -o <current-binary> ./cmd/smartgit
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("cannot determine current executable path: %w", err)
@@ -131,13 +219,6 @@ func performSelfUpdate(ctx context.Context) error {
 	buildCmd.Stderr = os.Stderr
 	if err := buildCmd.Run(); err != nil {
 		return fmt.Errorf("go build failed: %w", err)
-	}
-
-	// In case the binary was rebuilt in a different directory, ensure path is absolute.
-	if !filepath.IsAbs(exePath) {
-		if abs, err := filepath.Abs(exePath); err == nil {
-			_ = abs // silence unused variable, kept for future use if needed
-		}
 	}
 
 	return nil
