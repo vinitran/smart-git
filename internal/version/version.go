@@ -4,7 +4,7 @@ import "time"
 
 // Current is the version string of this CLI.
 // Bump this value whenever you cut a new release.
-const Current = "0.1.3"
+const Current = "0.2.0"
 
 // LatestURL points to the VERSION file on GitHub
 // that the CLI uses to check for newer releases.
