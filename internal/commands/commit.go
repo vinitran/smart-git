@@ -21,10 +21,9 @@ type commitOptions struct {
 
 var (
 	commitCmd = &cobra.Command{
-		Use:     "commit",
-		Aliases: []string{"cm"},
-		Short:   "Stage all changes and create a commit message suggested by AI",
-		RunE:    runCommit,
+		Use:   "commit",
+		Short: "Stage all changes and create a commit message suggested by AI",
+		RunE:  runCommit,
 	}
 	commitOpts commitOptions
 )
